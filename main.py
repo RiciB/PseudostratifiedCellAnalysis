@@ -41,6 +41,18 @@ for file_name in os.listdir(raw_folder):
     seg_data = seg_file['/segmentation'][()]
 
 
+    try:
+        good_seg_data = np.zeros_like(seg_data);
+    except Exception as e:
+        seg_data = np.array(segmentedImgh5.get('segmentation'));
+        good_seg_data = np.zeros_like(seg_data);
+    
+
+    for cell in chosen_cells:
+        for num_cell in cell:
+            good_seg_data[seg_data == num_cell] = num_cell[0]
+
+
     propertyTable = ('area', 'bbox', 'bbox_area', 'centroid', 'convex_area', 'convex_image', 'coords', 'eccentricity')
 
     intensityProps = ('label', 'mean_intensity', 'weighted_centroid')
@@ -51,4 +63,7 @@ for file_name in os.listdir(raw_folder):
 
     #'eccentricity', 'perimeter' and 'perimeter_crofton' is not implemented for 3D images
 
-    props = measure.regionprops_table(seg_data, intensity_image=raw_img, properties=('label',))
+    props = measure.regionprops_table(good_seg_data, intensity_image=raw_img, properties=propertyTable)
+
+    np.savetxt(stack_ID + '_cell-analysis.csv', props, delimiter=", ", fmt="% s")
+
