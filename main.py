@@ -1,31 +1,40 @@
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
-
 import os
 import h5py
 import numpy as np
 import matplotlib.pyplot as plt
 from skimage import io, measure, morphology, segmentation, transform, filters
 
+chosen_cells = {}
 
-raw_folder = '';
+raw_folder = '/Users/ricardo/Documents/Temporary/Segmentations/';
 
-for file_name in os.listdir(raw_folder):
+for file_name in os.listdir(raw_folder + 'Images/'):
         
     stack_ID = file_name.rstrip('.tif');
-
+    print(stack_ID)
     chosen_cells[stack_ID] = set()
-
-    with open(raw_folder + file_name + '_GOOD-CELLS.txt', 'r') as file:
+    
+    file_path = raw_folder + 'Cells/' + stack_ID + '_GOOD-CELLS.txt'
+    
+    if not os.path.exists(file_path):
+        print('%s does not exists, skipping...', file_path)
+        continue
+    
+    with open(file_path, 'r') as file:
         
         for cell in file:
             
             cell = (int(cell),)
             
             chosen_cells[stack_ID].add(cell)
- 
+     
+    file_path = raw_folder + 'Cells/' + stack_ID + '_SPLIT-CELLS.txt'
     
-    with open(raw_folder + file_name + '_SPLIT-CELLS.txt', 'r') as file:
+    if not os.path.exists(file_path):
+        print('%s does not exists, skipping...', file_path)
+        continue
+    
+    with open(file_path, 'r') as file:
         
         for cells in file:
             
@@ -35,9 +44,9 @@ for file_name in os.listdir(raw_folder):
 
 
 
-    raw_img = io.imread(raw_folder + file_name);
+    raw_img = io.imread(raw_folder + 'Images/' + file_name);
 
-    seg_file = h5py.File(raw_folder + file_name, 'r')
+    seg_file = h5py.File(raw_folder + 'Segmentations/' + stack_ID + '_predictions_gasp_average.h5', 'r')
     seg_data = seg_file['/segmentation'][()]
 
 
@@ -49,7 +58,8 @@ for file_name in os.listdir(raw_folder):
     
 
     for cell in chosen_cells:
-        for num_cell in cell:
+        for num_cell in chosen_cells[cell]:
+            print(num_cell)
             good_seg_data[seg_data == num_cell] = num_cell[0]
 
 
@@ -65,5 +75,4 @@ for file_name in os.listdir(raw_folder):
 
     props = measure.regionprops_table(good_seg_data, intensity_image=raw_img, properties=propertyTable)
 
-    np.savetxt(stack_ID + '_cell-analysis.csv', props, delimiter=", ", fmt="% s")
-
+    np.savetxt(raw_folder + stack_ID + '_cell-analysis.csv', props, delimiter=", ", fmt="% s")
