@@ -80,16 +80,13 @@ for file_name in os.listdir(raw_folder + 'Images/'):
 
     raw_img = io.imread(raw_folder + 'Images/' + file_name);
 
-    seg_file = h5py.File(raw_folder + 'Segmentations/' + stack_ID + '_predictions_gasp_average.h5', 'r')
-    seg_data = seg_file['/segmentation'][()];
-
     if file_name.endswith('tif') or file_name.endswith('tiff'):
         zSpacing, xResolution, yResolution = raw_parameters(raw_folder + 'Images/' + file_name)
-        print(round(raw_img.shape[0]*(zSpacing/xResolution)))
-        # raw_img = transform.resize(raw_img, (round(raw_img.shape[0]*(zSpacing/xResolution)), raw_img.shape[1], raw_img.shape[2]),
-        #                    order=0, preserve_range=True, anti_aliasing=False).astype(np.uint32)
-        # seg_data = transform.resize(seg_data, (round(raw_img.shape[0]*(zSpacing/xResolution)), raw_img.shape[1], raw_img.shape[2]),
-        #                    order=0, preserve_range=True, anti_aliasing=False).astype(np.uint32)
+        raw_img = transform.resize(raw_img, (round(raw_img.shape[0]*(zSpacing/xResolution)), raw_img.shape[1], raw_img.shape[2]),
+                           order=0, preserve_range=True, anti_aliasing=False).astype(np.uint32)
+
+    seg_file = h5py.File(raw_folder + 'Segmentations/' + stack_ID + '_predictions_gasp_average.h5', 'r')
+    seg_data = seg_file['/segmentation'][()];
 
     try:
         good_seg_data = np.zeros_like(seg_data);
@@ -103,6 +100,11 @@ for file_name in os.listdir(raw_folder + 'Images/'):
             print(num_cell)
             good_seg_data[seg_data == num_cell] = num_cell[0]
 
+    # Splitting the 'resize' fuctions for the RAM to recover
+    if file_name.endswith('tif') or file_name.endswith('tiff'):
+        good_seg_data = transform.resize(good_seg_data, (round(good_seg_data.shape[0]*(zSpacing/xResolution)), good_seg_data.shape[1], good_seg_data.shape[2]),
+                           order=0, preserve_range=True, anti_aliasing=False).astype(np.uint32)
+
     #propertyTable = ('area', 'bbox', 'bbox_area', 'centroid', 'convex_area', 'convex_image', 'coords', 'eccentricity')
 
     shapeProps = ('label', 'area', 'convex_area', 'equivalent_diameter', 
@@ -110,8 +112,8 @@ for file_name in os.listdir(raw_folder + 'Images/'):
                   'minor_axis_length', 'solidity', 'mean_intensity', 'weighted_centroid')
 
     #'eccentricity', 'perimeter' and 'perimeter_crofton' is not implemented for 3D images
-
-    props = measure.regionprops_table(good_seg_data, intensity_image=raw_img, properties=[shapeProps, intensityProps])
+    print('Calculating cell features')
+    props = measure.regionprops_table(good_seg_data, intensity_image=raw_img, properties=shapeProps)
 
 
     np.savetxt(raw_folder + stack_ID + '_cell-analysis.csv', props, delimiter=", ", fmt="% s")
