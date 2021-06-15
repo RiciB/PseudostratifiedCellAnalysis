@@ -61,26 +61,44 @@ def neighbours(segmentedImg, threshold_height_cells):
             
     return neighbours
 
-def surfacesArea(segmentedImg, backgroundIndices):
+def surfacesArea(segmentedImg, backgroundIndices, chosen_cells):
     print('Calculating surface areas...')
-    cellIds = np.sort(np.unique(segmentedImg))
-    cellIds = cellIds[1:]
+    if chosen_cells == []:
+        cellIds = np.sort(np.unique(segmentedImg))
+        cellIds = cellIds[1:]
+    else:
+        cellIds = chosen_cells;
 
-    lateralSurface = np.zeros_like(segmentedImg);
-    topSurface = np.zeros_like(segmentedImg);
-    bottomSurface = np.zeros_like(segmentedImg);
+    ## In case we need more, we can store each image
+    #lateralSurface = np.zeros_like(segmentedImg);
+    #topSurface = np.zeros_like(segmentedImg);
+    #bottomSurface = np.zeros_like(segmentedImg);
+
+    lateralSurfaceAreas = np.zeros(np.max(cellIds))
+    topSurfaceAreas = np.zeros(np.max(cellIds))
+    bottomSurfaceAreas = np.zeros(np.max(cellIds))
 
     for cel in cellIds:
+        print(cel)
+        if cel in backgroundIndices or cel == 0:
+            continue
         #Boundary of cell and boundary of cell and background
         boundaryCell = segmentation.find_boundaries(segmentedImg==cel)
 
         if backgroundIndices.shape[0] == 2:
-            boundaryCellAndTop = segmentation.find_boundaries((segmentedImg==cell) | (segmentedImg == backgroundIndices[0]))
-            boundaryCellAndBottom = segmentation.find_boundaries((segmentedImg==cell) | (segmentedImg == backgroundIndices[1]))
+            boundaryCellAndTop = segmentation.find_boundaries((segmentedImg==cel) | (segmentedImg == backgroundIndices[0]))
+            boundaryCellAndBottom = segmentation.find_boundaries((segmentedImg==cel) | (segmentedImg == backgroundIndices[1]))
 
-            lateralSurface[boundaryCellAndTop & boundaryCellAndBottom & boundaryCell] = cel;
-            topSurface[~boundaryCellAndTop & boundaryCell] = cel;
-            bottomSurface[~boundaryCellAndBottom & boundaryCell] = cel;
+            lateralSurfaceAreas[cel] = np.sum(boundaryCellAndTop & boundaryCellAndBottom & boundaryCell)
+            topSurfaceAreas[cel] = np.sum(~boundaryCellAndTop & boundaryCell)
+            bottomSurfaceAreas[cel] = np.sum(~boundaryCellAndBottom & boundaryCell)
+
+            print(lateralSurfaceAreas[cel])
+            print(topSurfaceAreas[cel])
+
+            #lateralSurface[boundaryCellAndTop & boundaryCellAndBottom & boundaryCell] = cel;
+            #topSurface[~boundaryCellAndTop & boundaryCell] = cel;
+            #bottomSurface[~boundaryCellAndBottom & boundaryCell] = cel;
         else:
             boundaryCellAndBackground = segmentation.find_boundaries(ismember((cell, backgroundIndices), segmentedImg))
             lateralSurface[boundaryCellAndBackground & boundaryCell] = cel;
@@ -91,14 +109,9 @@ def surfacesArea(segmentedImg, backgroundIndices):
             bottomSurface = topAndBottomSurface;
             print('CAREEEEEEE!!')
 
-
-    lateralSurfaceArea = measure.regionprops_table(lateralSurface, properties=('area'));
-    topSurfaceArea = measure.regionprops_table(topSurface, properties=('area'));
-    bottomSurfaceArea = measure.regionprops_table(bottomSurface, properties=('area'));
-
     #Export average zs of basal and apical layer
 
-    return pd.DataFrame(lateralSurfaceArea), pd.DataFrame(topSurfaceArea), pd.DataFrame(bottomSurfaceArea);
+    return pd.DataFrame({'lateralSurfaceArea': lateralSurfaceAreas}), pd.DataFrame({'topSurfaceArea': topSurfaceAreas}), pd.DataFrame({'bottomSurfaceArea': bottomSurfaceAreas});
 
 chosen_cells = {}
 
@@ -154,14 +167,6 @@ for file_name in os.listdir(raw_folder + 'Images/'):
     if file_name.endswith('tif') or file_name.endswith('tiff'):
         seg_data = transform.resize(seg_data, (round(seg_data.shape[0]*(zSpacing/xResolution)), seg_data.shape[1], seg_data.shape[2]),
                            order=0, preserve_range=True, anti_aliasing=False).astype(np.uint32)
-    
-    backgroundIndices = np.unique((seg_data[0, 0, 0], seg_data[seg_data.shape[0]-1, seg_data.shape[1]-1, seg_data.shape[2]-1]))
-
-    lateralArea, apicalArea, basalArea = surfacesArea(seg_data, backgroundIndices)
-    
-    print(lateralArea)
-    print(apicalArea)
-    print(basalArea)
 
     #seg_neighbours = neighbours(seg_data, []);
 
@@ -171,16 +176,20 @@ for file_name in os.listdir(raw_folder + 'Images/'):
         seg_data = np.array(seg_file.get('segmentation'));
         good_seg_data = np.zeros_like(seg_data);
 
-
     for cell in chosen_cells:
         for num_cell in chosen_cells[cell]:
             print(num_cell)
             good_seg_data[seg_data == num_cell] = num_cell[0]
 
-    # Splitting the 'resize' fuctions for the RAM to recover
-    if file_name.endswith('tif') or file_name.endswith('tiff'):
-        good_seg_data = transform.resize(good_seg_data, (round(good_seg_data.shape[0]*(zSpacing/xResolution)), good_seg_data.shape[1], good_seg_data.shape[2]),
-                           order=0, preserve_range=True, anti_aliasing=False).astype(np.uint32)
+    seg_data[good_seg_data>0] = good_seg_data[good_seg_data>0];
+
+    backgroundIndices = np.unique((seg_data[0, 0, 0], seg_data[seg_data.shape[0]-1, seg_data.shape[1]-1, seg_data.shape[2]-1]))
+
+    lateralArea, apicalArea, basalArea = surfacesArea(seg_data, backgroundIndices, np.unique(good_seg_data))
+    
+    print(lateralArea)
+    print(apicalArea)
+    print(basalArea)
 
     #propertyTable = ('area', 'bbox', 'bbox_area', 'centroid', 'convex_area', 'convex_image', 'coords', 'eccentricity')
     #'eccentricity', 'perimeter' and 'perimeter_crofton' is not implemented for 3D images
