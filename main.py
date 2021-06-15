@@ -4,12 +4,16 @@ import numpy as np
 import matplotlib.pyplot as plt
 import tifffile as tiff
 import diplib as dip
-from PIL import Image
-from PIL.TiffTags import TAGS
 import pandas as pd
 
+from PIL import Image
+from PIL.TiffTags import TAGS
+from operator import xor
 from skimage import io, measure, morphology, segmentation, transform, filters
 
+
+def ismember(indices, matrix):
+    return [ np.sum(index == matrix) for index in indices ]
 
 def raw_parameters(rawFilePath):
     '''Obtain raw image parameters: zSpacing, xResolution and yResolution from TIFF'''
@@ -33,6 +37,8 @@ def raw_parameters(rawFilePath):
 def neighbours(segmentedImg, threshold_height_cells):
     '''Return array of pairs of neighbouring cells from list of thresholded cells in whole image'''
     
+    print('Calculating neighbours...')
+
     #If cells aren't thresholded
     if threshold_height_cells == []:
         cellIds = np.sort(np.unique(segmentedImg))
@@ -55,12 +61,44 @@ def neighbours(segmentedImg, threshold_height_cells):
             
     return neighbours
 
-def surfacesArea(segmentedImg, neighbours):
-    print('surfaces')
-    #dilation of boundaries to obtain the lateral surfaces
+def surfacesArea(segmentedImg, backgroundIndices):
+    print('Calculating surface areas...')
+    cellIds = np.sort(np.unique(segmentedImg))
+    cellIds = cellIds[1:]
 
-    #Remove that regions from the surface area and we got two different surfaces: apical and basal
+    lateralSurface = np.zeros_like(segmentedImg);
+    topSurface = np.zeros_like(segmentedImg);
+    bottomSurface = np.zeros_like(segmentedImg);
 
+    for cel in cellIds:
+        #Boundary of cell and boundary of cell and background
+        boundaryCell = segmentation.find_boundaries(segmentedImg==cel)
+
+        if backgroundIndices.shape[0] == 2:
+            boundaryCellAndTop = segmentation.find_boundaries((segmentedImg==cell) | (segmentedImg == backgroundIndices[0]))
+            boundaryCellAndBottom = segmentation.find_boundaries((segmentedImg==cell) | (segmentedImg == backgroundIndices[1]))
+
+            lateralSurface[boundaryCellAndTop & boundaryCellAndBottom & boundaryCell] = cel;
+            topSurface[~boundaryCellAndTop & boundaryCell] = cel;
+            bottomSurface[~boundaryCellAndBottom & boundaryCell] = cel;
+        else:
+            boundaryCellAndBackground = segmentation.find_boundaries(ismember((cell, backgroundIndices), segmentedImg))
+            lateralSurface[boundaryCellAndBackground & boundaryCell] = cel;
+            topAndBottomSurface[~boundaryCellAndBackground & boundaryCell] = cel;
+
+            #Do something here like splitting the two possible regions
+            topSurface = topAndBottomSurface;
+            bottomSurface = topAndBottomSurface;
+            print('CAREEEEEEE!!')
+
+
+    lateralSurfaceArea = measure.regionprops_table(lateralSurface, properties=('area'));
+    topSurfaceArea = measure.regionprops_table(topSurface, properties=('area'));
+    bottomSurfaceArea = measure.regionprops_table(bottomSurface, properties=('area'));
+
+    #Export average zs of basal and apical layer
+
+    return pd.DataFrame(lateralSurfaceArea), pd.DataFrame(topSurfaceArea), pd.DataFrame(bottomSurfaceArea);
 
 chosen_cells = {}
 
@@ -112,6 +150,21 @@ for file_name in os.listdir(raw_folder + 'Images/'):
     seg_file = h5py.File(raw_folder + 'Segmentations/' + stack_ID + '_predictions_gasp_average.h5', 'r')
     seg_data = seg_file['/segmentation'][()];
 
+    # Splitting the 'resize' fuctions for the RAM to recover
+    if file_name.endswith('tif') or file_name.endswith('tiff'):
+        seg_data = transform.resize(seg_data, (round(seg_data.shape[0]*(zSpacing/xResolution)), seg_data.shape[1], seg_data.shape[2]),
+                           order=0, preserve_range=True, anti_aliasing=False).astype(np.uint32)
+    
+    backgroundIndices = np.unique((seg_data[0, 0, 0], seg_data[seg_data.shape[0]-1, seg_data.shape[1]-1, seg_data.shape[2]-1]))
+
+    lateralArea, apicalArea, basalArea = surfacesArea(seg_data, backgroundIndices)
+    
+    print(lateralArea)
+    print(apicalArea)
+    print(basalArea)
+
+    #seg_neighbours = neighbours(seg_data, []);
+
     try:
         good_seg_data = np.zeros_like(seg_data);
     except Exception as e:
@@ -134,7 +187,6 @@ for file_name in os.listdir(raw_folder + 'Images/'):
 
     shapeProps = ('label', 'area', 'major_axis_length', 'minor_axis_length', 'mean_intensity', 'weighted_centroid')
 
-    
     print('Calculating cell features')
     props = measure.regionprops_table(good_seg_data, intensity_image=raw_img, properties=shapeProps)
 
@@ -142,5 +194,10 @@ for file_name in os.listdir(raw_folder + 'Images/'):
     props['major_axis_length'] = props['major_axis_length'] * (xResolution * xResolution);
     props['minor_axis_length'] = props['minor_axis_length'] * (xResolution * xResolution);
 
+    featureCells = pd.DataFrame(props)
     
-    np.savetxt(raw_folder + stack_ID + '_cell-analysis.csv', pd.DataFrame(props), delimiter=", ", fmt="% s")
+    allFeatures = [featureCells, lateralArea * (xResolution * xResolution), apicalArea * (xResolution * xResolution), basalArea * (xResolution * xResolution)];
+    #concatenate dataframes
+    df = pd.concat(allFeatures, sort=False)
+
+    np.savetxt(raw_folder + stack_ID + '_cell-analysis.csv', df, delimiter=", ", fmt="% s")
