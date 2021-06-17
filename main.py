@@ -74,9 +74,11 @@ def surfacesArea(segmentedImg, backgroundIndices, chosen_cells):
     #topSurface = np.zeros_like(segmentedImg);
     #bottomSurface = np.zeros_like(segmentedImg);
 
-    lateralSurfaceAreas = np.zeros(np.max(cellIds))
-    topSurfaceAreas = np.zeros(np.max(cellIds))
-    bottomSurfaceAreas = np.zeros(np.max(cellIds))
+    lateralSurfaceAreas = np.zeros(cellIds.shape[0])
+    topSurfaceAreas = np.zeros(cellIds.shape[0])
+    bottomSurfaceAreas = np.zeros(cellIds.shape[0])
+
+    num_cell = 0;
 
     for cel in cellIds:
         print(cel)
@@ -89,12 +91,9 @@ def surfacesArea(segmentedImg, backgroundIndices, chosen_cells):
             boundaryCellAndTop = segmentation.find_boundaries((segmentedImg==cel) | (segmentedImg == backgroundIndices[0]))
             boundaryCellAndBottom = segmentation.find_boundaries((segmentedImg==cel) | (segmentedImg == backgroundIndices[1]))
 
-            lateralSurfaceAreas[cel] = np.sum(boundaryCellAndTop & boundaryCellAndBottom & boundaryCell)
-            topSurfaceAreas[cel] = np.sum(~boundaryCellAndTop & boundaryCell)
-            bottomSurfaceAreas[cel] = np.sum(~boundaryCellAndBottom & boundaryCell)
-
-            print(lateralSurfaceAreas[cel])
-            print(topSurfaceAreas[cel])
+            lateralSurfaceAreas[num_cell] = np.sum(boundaryCellAndTop & boundaryCellAndBottom & boundaryCell)
+            topSurfaceAreas[num_cell] = np.sum(~boundaryCellAndTop & boundaryCell)
+            bottomSurfaceAreas[num_cell] = np.sum(~boundaryCellAndBottom & boundaryCell)
 
             #lateralSurface[boundaryCellAndTop & boundaryCellAndBottom & boundaryCell] = cel;
             #topSurface[~boundaryCellAndTop & boundaryCell] = cel;
@@ -105,13 +104,14 @@ def surfacesArea(segmentedImg, backgroundIndices, chosen_cells):
             topAndBottomSurface[~boundaryCellAndBackground & boundaryCell] = cel;
 
             #Do something here like splitting the two possible regions
-            topSurface = topAndBottomSurface;
-            bottomSurface = topAndBottomSurface;
+            #topSurface = topAndBottomSurface;
+            #bottomSurface = topAndBottomSurface;
             print('CAREEEEEEE!!')
 
+        num_cell = num_cell + 1;
     #Export average zs of basal and apical layer
 
-    return pd.DataFrame({'lateralSurfaceArea': lateralSurfaceAreas}), pd.DataFrame({'topSurfaceArea': topSurfaceAreas}), pd.DataFrame({'bottomSurfaceArea': bottomSurfaceAreas});
+    return pd.DataFrame({'lateralSurfaceArea': lateralSurfaceAreas[0:num_cell]}), pd.DataFrame({'topSurfaceArea': topSurfaceAreas[0:num_cell]}), pd.DataFrame({'bottomSurfaceArea': bottomSurfaceAreas[0:num_cell]});
 
 chosen_cells = {}
 
@@ -178,18 +178,18 @@ for file_name in os.listdir(raw_folder + 'Images/'):
 
     for cell in chosen_cells:
         for num_cell in chosen_cells[cell]:
-            print(num_cell)
+            #print(num_cell)
             good_seg_data[seg_data == num_cell] = num_cell[0]
 
     seg_data[good_seg_data>0] = good_seg_data[good_seg_data>0];
 
     backgroundIndices = np.unique((seg_data[0, 0, 0], seg_data[seg_data.shape[0]-1, seg_data.shape[1]-1, seg_data.shape[2]-1]))
 
-    lateralArea, apicalArea, basalArea = surfacesArea(seg_data, backgroundIndices, np.unique(good_seg_data))
+    lateralArea, top_area, bottom_area = surfacesArea(seg_data, backgroundIndices, np.unique(good_seg_data))
     
     print(lateralArea)
-    print(apicalArea)
-    print(basalArea)
+    print(top_area)
+    print(bottom_area)
 
     #propertyTable = ('area', 'bbox', 'bbox_area', 'centroid', 'convex_area', 'convex_image', 'coords', 'eccentricity')
     #'eccentricity', 'perimeter' and 'perimeter_crofton' is not implemented for 3D images
@@ -199,14 +199,14 @@ for file_name in os.listdir(raw_folder + 'Images/'):
     print('Calculating cell features')
     props = measure.regionprops_table(good_seg_data, intensity_image=raw_img, properties=shapeProps)
 
-    props['area'] = props['area'] * (xResolution * xResolution * xResolution);
-    props['major_axis_length'] = props['major_axis_length'] * (xResolution * xResolution);
-    props['minor_axis_length'] = props['minor_axis_length'] * (xResolution * xResolution);
+    props['area'] = np.array(props['area'] * (xResolution * xResolution * xResolution), dtype=float);
+    props['major_axis_length'] = np.array(props['major_axis_length'] * (xResolution), dtype=float);
+    props['minor_axis_length'] = np.array(props['minor_axis_length'] * (xResolution), dtype=float);
 
     featureCells = pd.DataFrame(props)
     
-    allFeatures = [featureCells, lateralArea * (xResolution * xResolution), apicalArea * (xResolution * xResolution), basalArea * (xResolution * xResolution)];
-    #concatenate dataframes
-    df = pd.concat(allFeatures, sort=False)
+    featureCells['lateral_area'] = np.array(lateralArea['lateralSurfaceArea'] * (xResolution * xResolution), dtype=float)
+    featureCells['top_area'] = np.array(top_area['topSurfaceArea'] * (xResolution * xResolution), dtype=float)
+    featureCells['bottom_area'] = np.array(bottom_area['bottomSurfaceArea'] * (xResolution * xResolution), dtype=float);
 
-    np.savetxt(raw_folder + stack_ID + '_cell-analysis.csv', df, delimiter=", ", fmt="% s")
+    featureCells.to_csv(raw_folder + stack_ID + '_cell-analysis.csv', index=False, header=True, float_format="%.8f")
