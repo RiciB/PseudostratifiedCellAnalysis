@@ -11,6 +11,8 @@ from PIL.TiffTags import TAGS
 from operator import xor
 from skimage import io, measure, morphology, segmentation, transform, filters
 
+import napari
+
 
 def ismember(indices, matrix):
     return [ np.sum(index == matrix) for index in indices ]
@@ -60,6 +62,23 @@ def neighbours(segmentedImg, threshold_height_cells):
             neighbours = np.append(neighbours, [(cel, n)], axis=0).astype(np.uint16)
             
     return neighbours
+
+def fillEmptyCells(segmentedImg, backgroundIndices):
+
+    backgroundImg = np.zeros_like(segmentedImg);
+    segmentedImgFilled = np.zeros_like(segmentedImg)
+    for numBackgroundIds in backgroundIndices:
+        backgroundImg[segmentedImg == numBackgroundIds] = 1
+    
+    #3D option
+    #morphology.binary_dilation(backgroundImg == 0, ball(2));
+
+    #2D Alternative
+    newIndex = np.max(segmentedImg) + 1;
+    for numZ in range(0, segmentedImg.shape[0]):
+        segmentedImgFilled[numZ, : , :] = morphology.remove_small_holes(backgroundImg[numZ, :, :]==0, area_threshold = 15000) * newIndex;
+
+    return segmentedImgFilled
 
 def surfacesArea(segmentedImg, backgroundIndices, chosen_cells):
     print('Calculating surface areas...')
@@ -117,7 +136,9 @@ chosen_cells = {}
 
 raw_folder = 'Data/';
 
-for file_name in os.listdir(raw_folder + 'Images/'):
+all_files = os.listdir(raw_folder + 'Images/');
+
+for file_name in all_files:
         
     stack_ID = file_name.rstrip('.tif');
     print(stack_ID)
@@ -163,12 +184,19 @@ for file_name in os.listdir(raw_folder + 'Images/'):
     seg_file = h5py.File(raw_folder + 'Segmentations/' + stack_ID + '_predictions_gasp_average.h5', 'r')
     seg_data = seg_file['/segmentation'][()];
 
+    backgroundIndices = np.unique((seg_data[0, 0, 0], seg_data[seg_data.shape[0]-1, seg_data.shape[1]-1, seg_data.shape[2]-1]))
     # Splitting the 'resize' fuctions for the RAM to recover
     if file_name.endswith('tif') or file_name.endswith('tiff'):
         seg_data = transform.resize(seg_data, (round(seg_data.shape[0]*(zSpacing/xResolution)), seg_data.shape[1], seg_data.shape[2]),
                            order=0, preserve_range=True, anti_aliasing=False).astype(np.uint32)
-
+    
     #seg_neighbours = neighbours(seg_data, []);
+    segmentedImg_filledHoles = fillEmptyCells(seg_data, backgroundIndices);
+    with napari.gui_qt():
+        viewer = napari.view_image(seg_data, rgb=False)
+        viewer.add_labels(segmentedImg_filledHoles, name='removedHoles')
+        #viewer.add_labels(good_seg_data, name='selectedCells')
+
 
     try:
         good_seg_data = np.zeros_like(seg_data);
@@ -178,13 +206,17 @@ for file_name in os.listdir(raw_folder + 'Images/'):
 
     for cell in chosen_cells:
         for num_cell in chosen_cells[cell]:
-            #print(num_cell)
-            good_seg_data[seg_data == num_cell] = num_cell[0]
+            print(num_cell)
+            good_seg_data[seg_data == num_cell] = num_cell
 
     seg_data[good_seg_data>0] = good_seg_data[good_seg_data>0];
 
-    backgroundIndices = np.unique((seg_data[0, 0, 0], seg_data[seg_data.shape[0]-1, seg_data.shape[1]-1, seg_data.shape[2]-1]))
+    with napari.gui_qt():
+        viewer = napari.view_image(seg_data, rgb=False)
+        viewer.add_labels(segmentedImg_filledHoles, name='removedHoles')
+        viewer.add_labels(good_seg_data, name='selectedCells')
 
+ 
     lateralArea, top_area, bottom_area = surfacesArea(seg_data, backgroundIndices, np.unique(good_seg_data))
     
     print(lateralArea)
