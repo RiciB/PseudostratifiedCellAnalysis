@@ -96,6 +96,7 @@ def surfacesArea(segmentedImg, backgroundIndices, chosen_cells):
     lateralSurfaceAreas = np.zeros(cellIds.shape[0])
     topSurfaceAreas = np.zeros(cellIds.shape[0])
     bottomSurfaceAreas = np.zeros(cellIds.shape[0])
+    cellHeightZs = np.zeros(cellIds.shape[0])
 
     num_cell = 0;
 
@@ -103,6 +104,9 @@ def surfacesArea(segmentedImg, backgroundIndices, chosen_cells):
         #print(cel)
         if cel in backgroundIndices or cel == 0:
             continue
+        
+        cellHeightZs[num_cell] = np.sum((seg_data == 251).any(2).any(1));
+
         #Boundary of cell and boundary of cell and background
         boundaryCell = segmentation.find_boundaries(segmentedImg==cel)
 
@@ -130,7 +134,7 @@ def surfacesArea(segmentedImg, backgroundIndices, chosen_cells):
         num_cell = num_cell + 1;
     #Export average zs of basal and apical layer
 
-    return pd.DataFrame({'lateralSurfaceArea': lateralSurfaceAreas[0:num_cell]}), pd.DataFrame({'topSurfaceArea': topSurfaceAreas[0:num_cell]}), pd.DataFrame({'bottomSurfaceArea': bottomSurfaceAreas[0:num_cell]});
+    return pd.DataFrame({'lateralSurfaceArea': lateralSurfaceAreas[0:num_cell]}), pd.DataFrame({'topSurfaceArea': topSurfaceAreas[0:num_cell]}), pd.DataFrame({'bottomSurfaceArea': bottomSurfaceAreas[0:num_cell]}, pd.DataFrame({'cellHeightZs' : cellHeightZs[0:num_cell]}));
 
 chosen_cells = {}
 
@@ -207,18 +211,14 @@ for file_name in all_files:
 
     seg_data[good_seg_data>0] = good_seg_data[good_seg_data>0];
 
-    with napari.gui_qt():
-        print('Waiting on napari')
-        viewer = napari.view_image(seg_data, rgb=False)
-        viewer.add_labels(segmentedImg_filledHoles, name='removedHoles')
-        viewer.add_labels(good_seg_data, name='selectedCells')
+    # with napari.gui_qt():
+    #     print('Waiting on napari')
+    #     viewer = napari.view_image(seg_data, rgb=False)
+    #     viewer.add_labels(segmentedImg_filledHoles, name='removedHoles')
+    #     viewer.add_labels(good_seg_data, name='selectedCells')
 
  
-    lateralArea, top_area, bottom_area = surfacesArea(seg_data, backgroundIndices, np.unique(good_seg_data))
-    
-    print(lateralArea)
-    print(top_area)
-    print(bottom_area)
+    lateralArea, top_area, bottom_area, cell_height_Zs = surfacesArea(seg_data, backgroundIndices, np.unique(good_seg_data))
 
     #propertyTable = ('area', 'bbox', 'bbox_area', 'centroid', 'convex_area', 'convex_image', 'coords', 'eccentricity')
     #'eccentricity', 'perimeter' and 'perimeter_crofton' is not implemented for 3D images
@@ -237,5 +237,6 @@ for file_name in all_files:
     featureCells['lateral_area'] = np.array(lateralArea['lateralSurfaceArea'] * (xResolution * xResolution), dtype=float)
     featureCells['top_area'] = np.array(top_area['topSurfaceArea'] * (xResolution * xResolution), dtype=float)
     featureCells['bottom_area'] = np.array(bottom_area['bottomSurfaceArea'] * (xResolution * xResolution), dtype=float);
+    featureCells['cellHeightZs'] = np.array(cell_height_Zs['cellHeightZs'] * (xResolution), dtype=float);
 
     featureCells.to_csv(raw_folder + stack_ID + '_cell-analysis.csv', index=False, header=True, float_format="%.8f")
