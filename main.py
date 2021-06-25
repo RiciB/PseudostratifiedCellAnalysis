@@ -64,7 +64,7 @@ def neighbours(segmentedImg, threshold_height_cells):
     return neighbours
 
 def fillEmptyCells(segmentedImg, backgroundIndices):
-
+    print('Filling empty cells...')
     backgroundImg = np.zeros_like(segmentedImg);
     segmentedImgFilled = np.zeros_like(segmentedImg)
     for numBackgroundIds in backgroundIndices:
@@ -100,7 +100,7 @@ def surfacesArea(segmentedImg, backgroundIndices, chosen_cells):
     num_cell = 0;
 
     for cel in cellIds:
-        print(cel)
+        #print(cel)
         if cel in backgroundIndices or cel == 0:
             continue
         #Boundary of cell and boundary of cell and background
@@ -142,7 +142,7 @@ for file_name in all_files:
         
     stack_ID = file_name.rstrip('.tif');
     print(stack_ID)
-    chosen_cells[stack_ID] = set()
+    chosen_cells = set()
 
     file_path = raw_folder + 'Cells/' + stack_ID + '_GOOD-CELLS.txt'
 
@@ -152,12 +152,9 @@ for file_name in all_files:
 
 
     with open(file_path, 'r') as file:
-
         for cell in file:
-
             cell = (int(cell),)
-
-            chosen_cells[stack_ID].add(cell)
+            chosen_cells.add(cell)
 
     file_path = raw_folder + 'Cells/' + stack_ID + '_SPLIT-CELLS.txt'
 
@@ -166,12 +163,9 @@ for file_name in all_files:
         continue
 
     with open(file_path, 'r') as file:
-
         for cells in file:
-
             cells = tuple([int(cell) for cell in cells.split()])
-
-            chosen_cells[stack_ID].add(cells)
+            chosen_cells.add(cells)
 
 
     raw_img = io.imread(raw_folder + 'Images/' + file_name);
@@ -192,10 +186,11 @@ for file_name in all_files:
     
     #seg_neighbours = neighbours(seg_data, []);
     segmentedImg_filledHoles = fillEmptyCells(seg_data, backgroundIndices);
-    with napari.gui_qt():
-        viewer = napari.view_image(seg_data, rgb=False)
-        viewer.add_labels(segmentedImg_filledHoles, name='removedHoles')
-        #viewer.add_labels(good_seg_data, name='selectedCells')
+    # with napari.gui_qt():
+    #     print('Waiting on napari')
+    #     viewer = napari.view_image(seg_data, rgb=False)
+    #     viewer.add_labels(segmentedImg_filledHoles, name='removedHoles')
+    #     #viewer.add_labels(good_seg_data, name='selectedCells')
 
 
     try:
@@ -205,13 +200,15 @@ for file_name in all_files:
         good_seg_data = np.zeros_like(seg_data);
 
     for cell in chosen_cells:
-        for num_cell in chosen_cells[cell]:
-            print(num_cell)
-            good_seg_data[seg_data == num_cell] = num_cell
+        #print(cell)
+        for num_cell in cell:
+            #print(num_cell)
+            good_seg_data[seg_data == num_cell] = cell[0];
 
     seg_data[good_seg_data>0] = good_seg_data[good_seg_data>0];
 
     with napari.gui_qt():
+        print('Waiting on napari')
         viewer = napari.view_image(seg_data, rgb=False)
         viewer.add_labels(segmentedImg_filledHoles, name='removedHoles')
         viewer.add_labels(good_seg_data, name='selectedCells')
@@ -226,14 +223,14 @@ for file_name in all_files:
     #propertyTable = ('area', 'bbox', 'bbox_area', 'centroid', 'convex_area', 'convex_image', 'coords', 'eccentricity')
     #'eccentricity', 'perimeter' and 'perimeter_crofton' is not implemented for 3D images
 
-    shapeProps = ('label', 'area', 'major_axis_length', 'minor_axis_length', 'mean_intensity', 'weighted_centroid')
+    shapeProps = ('label', 'area', 'major_axis_length', 'mean_intensity')
 
     print('Calculating cell features')
     props = measure.regionprops_table(good_seg_data, intensity_image=raw_img, properties=shapeProps)
 
-    props['area'] = np.array(props['area'] * (xResolution * xResolution * xResolution), dtype=float);
-    props['major_axis_length'] = np.array(props['major_axis_length'] * (xResolution), dtype=float);
-    props['minor_axis_length'] = np.array(props['minor_axis_length'] * (xResolution), dtype=float);
+    props['volume'] = np.array(props['area'] * (xResolution * xResolution * xResolution), dtype=float);
+    props['cellHeight'] = np.array(props['major_axis_length'] * (xResolution), dtype=float);
+    #props['minor_axis_length'] = np.array(props['minor_axis_length'] * (xResolution), dtype=float);
 
     featureCells = pd.DataFrame(props)
     
