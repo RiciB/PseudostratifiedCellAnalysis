@@ -105,7 +105,7 @@ def surfacesArea(segmentedImg, backgroundIndices, chosen_cells):
         if cel in backgroundIndices or cel == 0:
             continue
         
-        cellHeightZs[num_cell] = np.sum((seg_data == 251).any(2).any(1));
+        cellHeightZs[num_cell] = np.sum((segmentedImg == 251).any(2).any(1));
 
         #Boundary of cell and boundary of cell and background
         boundaryCell = segmentation.find_boundaries(segmentedImg==cel)
