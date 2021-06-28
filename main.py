@@ -66,7 +66,7 @@ def neighbours(segmentedImg, threshold_height_cells):
 def fillEmptyCells(segmentedImg, backgroundIndices):
     print('Filling empty cells...')
     backgroundImg = np.zeros_like(segmentedImg);
-    segmentedImgFilled = np.zeros_like(segmentedImg)
+    segmentedImgFilled = segmentedImg
     for numBackgroundIds in backgroundIndices:
         backgroundImg[segmentedImg == numBackgroundIds] = 1
     
@@ -76,7 +76,34 @@ def fillEmptyCells(segmentedImg, backgroundIndices):
     #2D Alternative
     newIndex = np.max(segmentedImg) + 1;
     for numZ in range(0, segmentedImg.shape[0]):
-        segmentedImgFilled[numZ, : , :] = morphology.remove_small_holes(backgroundImg[numZ, :, :]==0, area_threshold = 15000) * newIndex;
+        filledZ = morphology.remove_small_holes(backgroundImg[numZ, :, :]==0, area_threshold = 15000)
+        segmentedImgFilled[numZ, : , :] = (filledZ & segmentedImgFilled[numZ, : , :] == 0) * newIndex
+
+    newLabelsImg = morphology.label(segmentedImgFilled == newIndex);
+
+    with napari.gui_qt():
+        print('Waiting on napari')
+        viewer = napari.view_image(segmentedImg, rgb=False)
+        viewer.add_labels(newLabelsImg, name='newLabelsOnly')
+        viewer.add_labels(segmentedImgFilled, name='segmentedImgFilled')
+
+    for newLabel in np.sort(np.unique(newLabelsImg)):
+        if newLabel != 0:
+            segmentedImgFilled[newLabelsImg == newLabel] = newIndex
+            newIndex = newIndex + 1
+
+    #Divide into two regions: bottom and top
+    backgroundLabelled = morphology.label(segmentedImgFilled == 0)
+
+    segmentedImgFilled[backgroundLabelled == 1] = 0
+    segmentedImgFilled[backgroundLabelled == 1] = newIndex;
+
+    with napari.gui_qt():
+        print('Waiting on napari')
+        viewer = napari.view_image(segmentedImg, rgb=False)
+        viewer.add_labels(newLabelsImg, name='newLabelsOnly')
+        viewer.add_labels(segmentedImgFilled, name='segmentedImgFilled')
+
 
     return segmentedImgFilled
 
@@ -124,26 +151,16 @@ def surfacesArea(segmentedImg, backgroundIndices, chosen_cells):
         #Boundary of cell and boundary of cell and background
         boundaryCell = segmentation.find_boundaries(currentSegmentedImg==cel)
 
-        if backgroundIndices.shape[0] == 2:
-            boundaryCellAndTop = segmentation.find_boundaries((currentSegmentedImg==cel) | (currentSegmentedImg == backgroundIndices[0]))
-            boundaryCellAndBottom = segmentation.find_boundaries((currentSegmentedImg==cel) | (currentSegmentedImg == backgroundIndices[1]))
+        boundaryCellAndTop = segmentation.find_boundaries((currentSegmentedImg==cel) | (currentSegmentedImg == backgroundIndices[0]))
+        boundaryCellAndBottom = segmentation.find_boundaries((currentSegmentedImg==cel) | (currentSegmentedImg == backgroundIndices[1]))
 
-            lateralSurfaceAreas[num_cell] = np.sum(boundaryCellAndTop & boundaryCellAndBottom & boundaryCell)
-            topSurfaceAreas[num_cell] = np.sum(~boundaryCellAndTop & boundaryCell)
-            bottomSurfaceAreas[num_cell] = np.sum(~boundaryCellAndBottom & boundaryCell)
+        lateralSurfaceAreas[num_cell] = np.sum(boundaryCellAndTop & boundaryCellAndBottom & boundaryCell)
+        topSurfaceAreas[num_cell] = np.sum(~boundaryCellAndTop & boundaryCell)
+        bottomSurfaceAreas[num_cell] = np.sum(~boundaryCellAndBottom & boundaryCell)
 
-            #lateralSurface[boundaryCellAndTop & boundaryCellAndBottom & boundaryCell] = cel;
-            #topSurface[~boundaryCellAndTop & boundaryCell] = cel;
-            #bottomSurface[~boundaryCellAndBottom & boundaryCell] = cel;
-        else:
-            boundaryCellAndBackground = segmentation.find_boundaries(ismember((cell, backgroundIndices), currentSegmentedImg))
-            lateralSurface[boundaryCellAndBackground & boundaryCell] = cel;
-            topAndBottomSurface[~boundaryCellAndBackground & boundaryCell] = cel;
-
-            #Do something here like splitting the two possible regions
-            #topSurface = topAndBottomSurface;
-            #bottomSurface = topAndBottomSurface;
-            print('CAREEEEEEE!!')
+        #lateralSurface[boundaryCellAndTop & boundaryCellAndBottom & boundaryCell] = cel;
+        #topSurface[~boundaryCellAndTop & boundaryCell] = cel;
+        #bottomSurface[~boundaryCellAndBottom & boundaryCell] = cel;
 
         num_cell = num_cell + 1;
     #Export average zs of basal and apical layer
@@ -194,13 +211,15 @@ for file_name in all_files:
     seg_data = seg_file['/segmentation'][()];
 
     backgroundIndices = np.unique((seg_data[0, 0, 0], seg_data[seg_data.shape[0]-1, seg_data.shape[1]-1, seg_data.shape[2]-1]))
+
     # Splitting the 'resize' fuctions for the RAM to recover
     if file_name.endswith('tif') or file_name.endswith('tiff'):
         seg_data = transform.resize(seg_data, (round(seg_data.shape[0]*(zSpacing/xResolution)), seg_data.shape[1], seg_data.shape[2]),
                            order=0, preserve_range=True, anti_aliasing=False).astype(np.uint32)
     
     #seg_neighbours = neighbours(seg_data, []);
-    segmentedImg_filledHoles = fillEmptyCells(seg_data, backgroundIndices);
+    seg_data = fillEmptyCells(seg_data, backgroundIndices);
+
     # with napari.gui_qt():
     #     print('Waiting on napari')
     #     viewer = napari.view_image(seg_data, rgb=False)
