@@ -82,7 +82,7 @@ def fillEmptyCells(segmentedImg, backgroundIndices):
 
 def surfacesArea(segmentedImg, backgroundIndices, chosen_cells):
     print('Calculating surface areas...')
-    if chosen_cells == []:
+    if len(chosen_cells) == 0:
         cellIds = np.sort(np.unique(segmentedImg))
         cellIds = cellIds[1:]
     else:
@@ -98,21 +98,35 @@ def surfacesArea(segmentedImg, backgroundIndices, chosen_cells):
     bottomSurfaceAreas = np.zeros(shape=cellIds.shape[0])
     cellHeightZs = np.zeros(shape=cellIds.shape[0])
 
+    bboxes = measure.regionprops_table(segmentedImg);
     num_cell = 0;
+    dilationPixels = 3
 
     for cel in cellIds:
         #print(cel)
         if cel in backgroundIndices or cel == 0:
             continue
         
-        cellHeightZs[num_cell] = np.sum((segmentedImg == cel).any(2).any(1));
+        for numRow in range(0, len(bboxes['label'])):
+            if bboxes['label'][numRow] == cel:
+                break
+
+        initZ = bboxes['bbox-0'][numRow] - dilationPixels;
+        endZ = bboxes['bbox-3'][numRow] + dilationPixels;
+        initY = bboxes['bbox-1'][numRow] - dilationPixels;
+        endY = bboxes['bbox-4'][numRow] + dilationPixels;
+        initX = bboxes['bbox-2'][numRow] - dilationPixels;
+        endX = bboxes['bbox-5'][numRow] + dilationPixels;
+        currentSegmentedImg = segmentedImg[initZ:endZ, initY:endY, initX:endX]
+
+        cellHeightZs[num_cell] = np.sum((currentSegmentedImg == cel).any(2).any(1));
 
         #Boundary of cell and boundary of cell and background
-        boundaryCell = segmentation.find_boundaries(segmentedImg==cel)
+        boundaryCell = segmentation.find_boundaries(currentSegmentedImg==cel)
 
         if backgroundIndices.shape[0] == 2:
-            boundaryCellAndTop = segmentation.find_boundaries((segmentedImg==cel) | (segmentedImg == backgroundIndices[0]))
-            boundaryCellAndBottom = segmentation.find_boundaries((segmentedImg==cel) | (segmentedImg == backgroundIndices[1]))
+            boundaryCellAndTop = segmentation.find_boundaries((currentSegmentedImg==cel) | (currentSegmentedImg == backgroundIndices[0]))
+            boundaryCellAndBottom = segmentation.find_boundaries((currentSegmentedImg==cel) | (currentSegmentedImg == backgroundIndices[1]))
 
             lateralSurfaceAreas[num_cell] = np.sum(boundaryCellAndTop & boundaryCellAndBottom & boundaryCell)
             topSurfaceAreas[num_cell] = np.sum(~boundaryCellAndTop & boundaryCell)
@@ -122,7 +136,7 @@ def surfacesArea(segmentedImg, backgroundIndices, chosen_cells):
             #topSurface[~boundaryCellAndTop & boundaryCell] = cel;
             #bottomSurface[~boundaryCellAndBottom & boundaryCell] = cel;
         else:
-            boundaryCellAndBackground = segmentation.find_boundaries(ismember((cell, backgroundIndices), segmentedImg))
+            boundaryCellAndBackground = segmentation.find_boundaries(ismember((cell, backgroundIndices), currentSegmentedImg))
             lateralSurface[boundaryCellAndBackground & boundaryCell] = cel;
             topAndBottomSurface[~boundaryCellAndBackground & boundaryCell] = cel;
 
@@ -144,15 +158,13 @@ all_files = os.listdir(raw_folder + 'Images/');
 for file_name in all_files:
         
     stack_ID = file_name.rstrip('.tif');
-    print(stack_ID)
     chosen_cells = set()
 
     file_path = raw_folder + 'Cells/' + stack_ID + '_GOOD-CELLS.txt'
 
     if not os.path.exists(file_path):
-        print('%s does not exists, skipping...', file_path)
+        #print('%s does not exists, skipping...', file_path)
         continue
-
 
     with open(file_path, 'r') as file:
         for cell in file:
@@ -162,7 +174,7 @@ for file_name in all_files:
     file_path = raw_folder + 'Cells/' + stack_ID + '_SPLIT-CELLS.txt'
 
     if not os.path.exists(file_path):
-        print('%s does not exists, skipping...', file_path)
+        #print('%s does not exists, skipping...', file_path)
         continue
 
     with open(file_path, 'r') as file:
@@ -170,7 +182,7 @@ for file_name in all_files:
             cells = tuple([int(cell) for cell in cells.split()])
             chosen_cells.add(cells)
 
-
+    print(stack_ID)
     raw_img = io.imread(raw_folder + 'Images/' + file_name);
 
     if file_name.endswith('tif') or file_name.endswith('tiff'):
@@ -232,10 +244,13 @@ for file_name in all_files:
     #props['minor_axis_length'] = np.array(props['minor_axis_length'] * (xResolution), dtype=float);
 
     featureCells = pd.DataFrame(props)
-    
+
+    del featureCells['area']
+    del featureCells['major_axis_length']
+
+    featureCells['cellHeightZs'] = np.array(cell_height_Zs['cellHeightZs'] * (xResolution), dtype=float);
     featureCells['lateral_area'] = np.array(lateralArea['lateralSurfaceArea'] * (xResolution * xResolution), dtype=float)
     featureCells['top_area'] = np.array(top_area['topSurfaceArea'] * (xResolution * xResolution), dtype=float)
     featureCells['bottom_area'] = np.array(bottom_area['bottomSurfaceArea'] * (xResolution * xResolution), dtype=float);
-    featureCells['cellHeightZs'] = np.array(cell_height_Zs['cellHeightZs'] * (xResolution), dtype=float);
 
     featureCells.to_csv(raw_folder + stack_ID + '_cell-analysis.csv', index=False, header=True, float_format="%.8f")
