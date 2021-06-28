@@ -132,7 +132,6 @@ def surfacesArea(segmentedImg, backgroundIndices, chosen_cells):
             print('CAREEEEEEE!!')
 
         num_cell = num_cell + 1;
-        break;
     #Export average zs of basal and apical layer
     return pd.DataFrame({'lateralSurfaceArea': lateralSurfaceAreas[0:num_cell]}), pd.DataFrame({'topSurfaceArea': topSurfaceAreas[0:num_cell]}), pd.DataFrame({'bottomSurfaceArea': bottomSurfaceAreas[0:num_cell]}), pd.DataFrame({'cellHeightZs' : cellHeightZs[0:num_cell]});
 
