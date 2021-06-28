@@ -93,10 +93,10 @@ def surfacesArea(segmentedImg, backgroundIndices, chosen_cells):
     #topSurface = np.zeros_like(segmentedImg);
     #bottomSurface = np.zeros_like(segmentedImg);
 
-    lateralSurfaceAreas = np.zeros(cellIds.shape[0])
-    topSurfaceAreas = np.zeros(cellIds.shape[0])
-    bottomSurfaceAreas = np.zeros(cellIds.shape[0])
-    cellHeightZs = np.zeros(cellIds.shape[0])
+    lateralSurfaceAreas = np.zeros(shape=cellIds.shape[0])
+    topSurfaceAreas = np.zeros(shape=cellIds.shape[0])
+    bottomSurfaceAreas = np.zeros(shape=cellIds.shape[0])
+    cellHeightZs = np.zeros(shape=cellIds.shape[0])
 
     num_cell = 0;
 
@@ -105,7 +105,7 @@ def surfacesArea(segmentedImg, backgroundIndices, chosen_cells):
         if cel in backgroundIndices or cel == 0:
             continue
         
-        cellHeightZs[num_cell] = np.sum((segmentedImg == 251).any(2).any(1));
+        cellHeightZs[num_cell] = np.sum((segmentedImg == cel).any(2).any(1));
 
         #Boundary of cell and boundary of cell and background
         boundaryCell = segmentation.find_boundaries(segmentedImg==cel)
@@ -132,9 +132,9 @@ def surfacesArea(segmentedImg, backgroundIndices, chosen_cells):
             print('CAREEEEEEE!!')
 
         num_cell = num_cell + 1;
+        break;
     #Export average zs of basal and apical layer
-
-    return pd.DataFrame({'lateralSurfaceArea': lateralSurfaceAreas[0:num_cell]}), pd.DataFrame({'topSurfaceArea': topSurfaceAreas[0:num_cell]}), pd.DataFrame({'bottomSurfaceArea': bottomSurfaceAreas[0:num_cell]}, pd.DataFrame({'cellHeightZs' : cellHeightZs[0:num_cell]}));
+    return pd.DataFrame({'lateralSurfaceArea': lateralSurfaceAreas[0:num_cell]}), pd.DataFrame({'topSurfaceArea': topSurfaceAreas[0:num_cell]}), pd.DataFrame({'bottomSurfaceArea': bottomSurfaceAreas[0:num_cell]}), pd.DataFrame({'cellHeightZs' : cellHeightZs[0:num_cell]});
 
 chosen_cells = {}
 
