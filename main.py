@@ -66,7 +66,7 @@ def neighbours(segmentedImg, threshold_height_cells):
 def fillEmptyCells(segmentedImg, backgroundIndices):
     print('Filling empty cells...')
     backgroundImg = np.zeros_like(segmentedImg);
-    segmentedImgFilled = segmentedImg
+    segmentedImgFilled = np.zeros_like(segmentedImg)
     for numBackgroundIds in backgroundIndices:
         backgroundImg[segmentedImg == numBackgroundIds] = 1
     
@@ -77,16 +77,17 @@ def fillEmptyCells(segmentedImg, backgroundIndices):
     newIndex = np.max(segmentedImg) + 1;
     for numZ in range(0, segmentedImg.shape[0]):
         filledZ = morphology.remove_small_holes(backgroundImg[numZ, :, :]==0, area_threshold = 15000)
-        segmentedImgFilled[numZ, : , :] = (filledZ & segmentedImgFilled[numZ, : , :] == 0) * newIndex
+        segmentedImgFilled[numZ, : , :] = (filledZ & backgroundImg[numZ, : , :] == 1) * newIndex
 
     newLabelsImg = morphology.label(segmentedImgFilled == newIndex);
 
-    with napari.gui_qt():
-        print('Waiting on napari')
-        viewer = napari.view_image(segmentedImg, rgb=False)
-        viewer.add_labels(newLabelsImg, name='newLabelsOnly')
-        viewer.add_labels(segmentedImgFilled, name='segmentedImgFilled')
+    # with napari.gui_qt():
+    #     print('Waiting on napari')
+    #     viewer = napari.view_image(segmentedImg, rgb=False)
+    #     viewer.add_labels(newLabelsImg, name='newLabelsOnly')
+    #     viewer.add_labels(segmentedImgFilled, name='segmentedImgFilled')
 
+    print(np.sort(np.unique(newLabelsImg)))
     for newLabel in np.sort(np.unique(newLabelsImg)):
         if newLabel != 0:
             segmentedImgFilled[newLabelsImg == newLabel] = newIndex
@@ -96,12 +97,13 @@ def fillEmptyCells(segmentedImg, backgroundIndices):
     backgroundLabelled = morphology.label(segmentedImgFilled == 0)
 
     segmentedImgFilled[backgroundLabelled == 1] = 0
-    segmentedImgFilled[backgroundLabelled == 1] = newIndex;
+    segmentedImgFilled[backgroundLabelled == 2] = newIndex;
 
     with napari.gui_qt():
         print('Waiting on napari')
         viewer = napari.view_image(segmentedImg, rgb=False)
         viewer.add_labels(newLabelsImg, name='newLabelsOnly')
+        viewer.add_labels(backgroundLabelled, name='backgroundLabelled')
         viewer.add_labels(segmentedImgFilled, name='segmentedImgFilled')
 
 
