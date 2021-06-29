@@ -13,18 +13,15 @@ def fillEmptyCells(segmentedImg, backgroundIndices):
     for numBackgroundIds in backgroundIndices:
         backgroundImg[segmentedImg == numBackgroundIds] = 1
     
-    #3D option
-    #morphology.binary_dilation(backgroundImg == 0, ball(2));
-
-    #2D Alternative
+    # Fill cells with a newIndex generic
     newIndex = np.max(segmentedImg) + 1;
     for numZ in range(0, segmentedImg.shape[0]):
     	closedBackground = morphology.binary_closing(backgroundImg[numZ, :, :] == 0, morphology.disk(10))
     	filledZ = morphology.remove_small_holes(backgroundImg[numZ, :, :] == 0, area_threshold = 15000)
     	segmentedImgFilled[numZ, : , :] = (filledZ & (closedBackground == 0) & (backgroundImg[numZ, :, :] == 1)) * newIndex
 
+    # Divide cells per ID
     newLabelsImg = morphology.label(segmentedImgFilled == newIndex);
-
     newLabelsImg = morphology.remove_small_objects(newLabelsImg, min_size=50000)
     with napari.gui_qt():
         print('Waiting on napari')
@@ -32,30 +29,24 @@ def fillEmptyCells(segmentedImg, backgroundIndices):
         viewer.add_labels(newLabelsImg, name='newLabelsOnly')
         viewer.add_labels(segmentedImgFilled, name='segmentedImgFilled')
 
-    #print(np.sort(np.unique(newLabelsImg)))
+    # Add new cells to image with a new ID
     for newLabel in np.sort(np.unique(newLabelsImg)):
         if newLabel != 0:
             segmentedImgFilled[newLabelsImg == newLabel] = newIndex
             newIndex = newIndex + 1
 
+
+    # Add the original IDs
     segmentedImgFilled[segmentedImgFilled == 0] = segmentedImg[segmentedImgFilled == 0]
 
+	#Divide background into two regions: bottom and top with different IDs
     for numBackgroundIds in backgroundIndices:
         segmentedImgFilled[segmentedImgFilled == numBackgroundIds] = 0
 
-    #Divide into two regions: bottom and top
     backgroundLabelled = morphology.label(segmentedImgFilled == 0)
 
     segmentedImgFilled[backgroundLabelled == 1] = 0
     segmentedImgFilled[backgroundLabelled == 2] = newIndex;
-
-    # with napari.gui_qt():
-    #     print('Waiting on napari')
-    #     viewer = napari.view_image(segmentedImg, rgb=False)
-    #     viewer.add_labels(newLabelsImg, name='newLabelsOnly')
-    #     viewer.add_labels(backgroundLabelled, name='backgroundLabelled')
-    #     viewer.add_labels(segmentedImgFilled, name='segmentedImgFilled')
-
 
     return segmentedImgFilled
 
@@ -80,10 +71,10 @@ with open(txtFileWithZs, 'r') as file:
 		seg_file = h5py.File(raw_folder + 'Segmentations/' + file_name + '_predictions_gasp_average.h5', 'r')
 		seg_img = seg_file['/segmentation'][()];
 
-
 		backgroundIndices = np.unique((seg_img[0, 0, 0], seg_img[seg_img.shape[0]-1, seg_img.shape[1]-1, seg_img.shape[2]-1]))
 
-		fillEmptyCells(seg_img, backgroundIndices)
+		# Fill empty spaces by new cells within the tissue
+		#fillEmptyCells(seg_img, backgroundIndices)
 
 		if firstZ > lastZ: # We are at basal layer
 			#Need to exchange first and last
@@ -91,6 +82,8 @@ with open(txtFileWithZs, 'r') as file:
 			firstZ = lastZ
 			lastZ = aux
 
+		# Watershed by existing cells using previous cells as seeds
+		print('Watershed ongoing...')
 		for numZ in range(lastZ, firstZ-1, -1):
 			print(numZ)
 			# Use previous layer as seeds
@@ -98,23 +91,45 @@ with open(txtFileWithZs, 'r') as file:
 			previousLayer[previousLayer == backgroundIndices[0]] = 0
 			previousLayer[previousLayer == backgroundIndices[1]] = 0
 
+			if numZ == lastZ:
+				newLabelsImg = morphology.label(previousLayer == 0);
+				newLabelsImg[newLabelsImg > 0] = newLabelsImg[newLabelsImg > 0] + (np.max(previousLayer) + 1);
+				previousLayer[newLabelsImg > 0] = newLabelsImg[newLabelsImg > 0] 
+
+			erodedPreviousLayer = np.zeros_like(previousLayer);
+			
 			idCells = np.sort(np.unique(previousLayer));
 			idCells = idCells[1:]
 
-			erodedPreviousLayer = np.zeros_like(previousLayer);
 			#Erode each cell
 			for numCell in idCells:
-				erodedPreviousLayer[morphology.binary_erosion(previousLayer == numCell, morphology.disk(8))] = numCell
+				newErodedCell = morphology.binary_erosion(previousLayer == numCell, morphology.disk(10))
+				if np.sum(newErodedCell == 1) == 0:
+					newErodedCell = morphology.binary_erosion(previousLayer == numCell, morphology.disk(3))
+					if np.sum(newErodedCell == 1) == 0:
+						newErodedCell = previousLayer == numCell
+				
+				erodedPreviousLayer[newErodedCell] = numCell
 
 			denoised = filters.gaussian(raw_img[numZ, :, :], sigma=1)
-			#gradient = filters.rank.gradient(denoised, morphology.disk(1))
+
+			if numZ == lastZ:
+				with napari.gui_qt():
+					print('Waiting on napari')
+					viewer = napari.view_image(denoised, rgb=False)
+					viewer.add_labels(erodedPreviousLayer, name='erodedPreviousLayer')
+					viewer.add_labels(newLabelsImg, name='newLabelsImg')
+					viewer.add_labels(previousLayer, name='previousLayer')
+
 			watershedImg = segmentation.watershed(denoised, markers = erodedPreviousLayer)
+			
 			# with napari.gui_qt():
 			# 	print('Waiting on napari')
 			# 	viewer = napari.view_image(denoised, rgb=False)
 			# 	viewer.add_labels(seg_img[numZ, :, :], name='previousSegmentation')
 			# 	viewer.add_labels(erodedPreviousLayer, name='erodedPreviousLayer')
 			# 	viewer.add_labels(watershedImg, name='watershed')
+			
 			seg_img[numZ, :, :] = watershedImg
 
 
