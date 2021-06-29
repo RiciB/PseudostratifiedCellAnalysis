@@ -81,17 +81,25 @@ def fillEmptyCells(segmentedImg, backgroundIndices):
 
     newLabelsImg = morphology.label(segmentedImgFilled == newIndex);
 
+    newLabelsImg = morphology.remove_small_objects(newLabelsImg, min_size=50000)
     # with napari.gui_qt():
     #     print('Waiting on napari')
     #     viewer = napari.view_image(segmentedImg, rgb=False)
     #     viewer.add_labels(newLabelsImg, name='newLabelsOnly')
     #     viewer.add_labels(segmentedImgFilled, name='segmentedImgFilled')
 
-    print(np.sort(np.unique(newLabelsImg)))
+    #print(np.sort(np.unique(newLabelsImg)))
     for newLabel in np.sort(np.unique(newLabelsImg)):
         if newLabel != 0:
             segmentedImgFilled[newLabelsImg == newLabel] = newIndex
             newIndex = newIndex + 1
+
+    #Add also small objects to background or somethig
+
+    segmentedImgFilled[segmentedImgFilled == 0] = segmentedImg[segmentedImgFilled == 0]
+
+    for numBackgroundIds in backgroundIndices:
+        segmentedImgFilled[segmentedImgFilled == numBackgroundIds] = 0
 
     #Divide into two regions: bottom and top
     backgroundLabelled = morphology.label(segmentedImgFilled == 0)
@@ -99,12 +107,12 @@ def fillEmptyCells(segmentedImg, backgroundIndices):
     segmentedImgFilled[backgroundLabelled == 1] = 0
     segmentedImgFilled[backgroundLabelled == 2] = newIndex;
 
-    with napari.gui_qt():
-        print('Waiting on napari')
-        viewer = napari.view_image(segmentedImg, rgb=False)
-        viewer.add_labels(newLabelsImg, name='newLabelsOnly')
-        viewer.add_labels(backgroundLabelled, name='backgroundLabelled')
-        viewer.add_labels(segmentedImgFilled, name='segmentedImgFilled')
+    # with napari.gui_qt():
+    #     print('Waiting on napari')
+    #     viewer = napari.view_image(segmentedImg, rgb=False)
+    #     viewer.add_labels(newLabelsImg, name='newLabelsOnly')
+    #     viewer.add_labels(backgroundLabelled, name='backgroundLabelled')
+    #     viewer.add_labels(segmentedImgFilled, name='segmentedImgFilled')
 
 
     return segmentedImgFilled
@@ -221,7 +229,7 @@ for file_name in all_files:
     
     #seg_neighbours = neighbours(seg_data, []);
     seg_data = fillEmptyCells(seg_data, backgroundIndices);
-
+    backgroundIndices = np.unique((seg_data[0, 0, 0], seg_data[seg_data.shape[0]-1, seg_data.shape[1]-1, seg_data.shape[2]-1]))
     # with napari.gui_qt():
     #     print('Waiting on napari')
     #     viewer = napari.view_image(seg_data, rgb=False)
