@@ -74,7 +74,7 @@ with open(txtFileWithZs, 'r') as file:
 		backgroundIndices = np.unique((seg_img[0, 0, 0], seg_img[seg_img.shape[0]-1, seg_img.shape[1]-1, seg_img.shape[2]-1]))
 
 		# Fill empty spaces by new cells within the tissue
-		#fillEmptyCells(seg_img, backgroundIndices)
+		fillEmptyCells(seg_img, backgroundIndices)
 
 		if firstZ > lastZ: # We are at basal layer
 			#Need to exchange first and last
@@ -86,6 +86,7 @@ with open(txtFileWithZs, 'r') as file:
 		print('Watershed ongoing...')
 		for numZ in range(lastZ, firstZ-1, -1):
 			print(numZ)
+
 			# Use previous layer as seeds
 			previousLayer = seg_img[numZ+1, :, :];
 			previousLayer[previousLayer == backgroundIndices[0]] = 0
@@ -113,22 +114,21 @@ with open(txtFileWithZs, 'r') as file:
 
 			denoised = filters.gaussian(raw_img[numZ, :, :], sigma=1)
 
-			if numZ == lastZ:
+			watershedImg = segmentation.watershed(denoised, markers = erodedPreviousLayer)
+
+			#CARE: We can try different methods. Also beware of bottom intensities usually drop down 
+			background_threshold = np.quantile(raw_img[numZ, :, :], 0.7)
+			raw_img_onlyTissue = morphology.binary_closing(raw_img > background_threshold, morphology.disk(10));
+			watershedImg[raw_img_onlyTissue == 0] = 0
+
+			if numZ == 15:
 				with napari.gui_qt():
 					print('Waiting on napari')
 					viewer = napari.view_image(denoised, rgb=False)
 					viewer.add_labels(erodedPreviousLayer, name='erodedPreviousLayer')
-					viewer.add_labels(newLabelsImg, name='newLabelsImg')
-					viewer.add_labels(previousLayer, name='previousLayer')
+					viewer.add_labels(raw_img_onlyTissue, name='raw_img_onlyTissue')
+					viewer.add_labels(watershedImg, name='watershed')
 
-			watershedImg = segmentation.watershed(denoised, markers = erodedPreviousLayer)
-			
-			# with napari.gui_qt():
-			# 	print('Waiting on napari')
-			# 	viewer = napari.view_image(denoised, rgb=False)
-			# 	viewer.add_labels(seg_img[numZ, :, :], name='previousSegmentation')
-			# 	viewer.add_labels(erodedPreviousLayer, name='erodedPreviousLayer')
-			# 	viewer.add_labels(watershedImg, name='watershed')
 			
 			seg_img[numZ, :, :] = watershedImg
 
