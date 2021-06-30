@@ -23,11 +23,11 @@ def fillEmptyCells(segmentedImg, backgroundIndices):
     # Divide cells per ID
     newLabelsImg = morphology.label(segmentedImgFilled == newIndex);
     newLabelsImg = morphology.remove_small_objects(newLabelsImg, min_size=50000)
-    with napari.gui_qt():
-        print('Waiting on napari')
-        viewer = napari.view_image(segmentedImg, rgb=False)
-        viewer.add_labels(newLabelsImg, name='newLabelsOnly')
-        viewer.add_labels(segmentedImgFilled, name='segmentedImgFilled')
+    # with napari.gui_qt():
+    #     print('Waiting on napari')
+    #     viewer = napari.view_image(segmentedImg, rgb=False)
+    #     viewer.add_labels(newLabelsImg, name='newLabelsOnly')
+    #     viewer.add_labels(segmentedImgFilled, name='segmentedImgFilled')
 
     # Add new cells to image with a new ID
     for newLabel in np.sort(np.unique(newLabelsImg)):
@@ -72,9 +72,9 @@ with open(txtFileWithZs, 'r') as file:
 		seg_img = seg_file['/segmentation'][()];
 
 		backgroundIndices = np.unique((seg_img[0, 0, 0], seg_img[seg_img.shape[0]-1, seg_img.shape[1]-1, seg_img.shape[2]-1]))
-
+		background_threshold = np.quantile(raw_img, 0.6)
 		# Fill empty spaces by new cells within the tissue
-		fillEmptyCells(seg_img, backgroundIndices)
+		seg_img = fillEmptyCells(seg_img, backgroundIndices)
 
 		if firstZ > lastZ: # We are at basal layer
 			#Need to exchange first and last
@@ -89,8 +89,8 @@ with open(txtFileWithZs, 'r') as file:
 
 			# Use previous layer as seeds
 			previousLayer = seg_img[numZ+1, :, :];
-			previousLayer[previousLayer == backgroundIndices[0]] = 0
-			previousLayer[previousLayer == backgroundIndices[1]] = 0
+			for numBackgroundIds in backgroundIndices:
+        		previousLayer[previousLayer == numBackgroundIds] = 0
 
 			if numZ == lastZ:
 				newLabelsImg = morphology.label(previousLayer == 0);
@@ -117,17 +117,16 @@ with open(txtFileWithZs, 'r') as file:
 			watershedImg = segmentation.watershed(denoised, markers = erodedPreviousLayer)
 
 			#CARE: We can try different methods. Also beware of bottom intensities usually drop down 
-			background_threshold = np.quantile(raw_img[numZ, :, :], 0.7)
-			raw_img_onlyTissue = morphology.binary_closing(raw_img > background_threshold, morphology.disk(10));
+			raw_img_onlyTissue = morphology.binary_closing(raw_img[numZ, :, :] > background_threshold, morphology.disk(20));
 			watershedImg[raw_img_onlyTissue == 0] = 0
 
-			if numZ == 15:
-				with napari.gui_qt():
-					print('Waiting on napari')
-					viewer = napari.view_image(denoised, rgb=False)
-					viewer.add_labels(erodedPreviousLayer, name='erodedPreviousLayer')
-					viewer.add_labels(raw_img_onlyTissue, name='raw_img_onlyTissue')
-					viewer.add_labels(watershedImg, name='watershed')
+			# if numZ == 15:
+			# 	with napari.gui_qt():
+			# 		print('Waiting on napari')
+			# 		viewer = napari.view_image(denoised, rgb=False)
+			# 		viewer.add_labels(erodedPreviousLayer, name='erodedPreviousLayer')
+			# 		viewer.add_labels(raw_img_onlyTissue, name='raw_img_onlyTissue')
+			# 		viewer.add_labels(watershedImg, name='watershed')
 
 			
 			seg_img[numZ, :, :] = watershedImg
@@ -136,5 +135,5 @@ with open(txtFileWithZs, 'r') as file:
 
 		outputFile = raw_folder + 'Segmentations_reviewed/' + file_name + '_watersheded.h5'
 		postProcessFile = h5py.File(outputFile, 'w')
-		segmentationFile = postProcessFile.create_dataset("segmentation", data=seg_img, dtype='uint16')
+		segmentationFile = postProcessFile.create_dataset("segmentation", data=seg_img, dtype='uint16', compression="gzip", compression_opts=9)
 		postProcessFile.close()
