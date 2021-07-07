@@ -68,11 +68,12 @@ with open(txtFileWithZs, 'r') as file:
 		print(file_name)
 
 		raw_img = io.imread(raw_folder + 'Images/' + file_name + '.tif');
+		tissueRegion = io.imread(raw_folder + 'TissueOnly/' + file_name + '.tif');
 		seg_file = h5py.File(raw_folder + 'Segmentations/' + file_name + '_predictions_gasp_average.h5', 'r')
 		seg_img = seg_file['/segmentation'][()];
 
 		backgroundIndices = np.unique((seg_img[0, 0, 0], seg_img[seg_img.shape[0]-1, seg_img.shape[1]-1, seg_img.shape[2]-1]))
-		background_threshold = np.quantile(raw_img, 0.6)
+		#background_threshold = np.quantile(filters.gaussian(raw_img, sigma=1), 0.6)
 		# Fill empty spaces by new cells within the tissue
 		seg_img = fillEmptyCells(seg_img, backgroundIndices)
 
@@ -90,7 +91,7 @@ with open(txtFileWithZs, 'r') as file:
 			# Use previous layer as seeds
 			previousLayer = seg_img[numZ+1, :, :];
 			for numBackgroundIds in backgroundIndices:
-        		previousLayer[previousLayer == numBackgroundIds] = 0
+				previousLayer[previousLayer == numBackgroundIds] = 0
 
 			if numZ == lastZ:
 				newLabelsImg = morphology.label(previousLayer == 0);
@@ -117,8 +118,8 @@ with open(txtFileWithZs, 'r') as file:
 			watershedImg = segmentation.watershed(denoised, markers = erodedPreviousLayer)
 
 			#CARE: We can try different methods. Also beware of bottom intensities usually drop down 
-			raw_img_onlyTissue = morphology.binary_closing(raw_img[numZ, :, :] > background_threshold, morphology.disk(20));
-			watershedImg[raw_img_onlyTissue == 0] = 0
+			#tissueRegion = morphology.binary_closing(raw_img[numZ, :, :] > background_threshold, morphology.disk(20));
+			watershedImg[tissueRegion[numZ, :, :] == 0] = 0
 
 			# if numZ == 15:
 			# 	with napari.gui_qt():
