@@ -119,7 +119,7 @@ with open(txtFileWithZs, 'r') as file:
 
 			#CARE: We can try different methods. Also beware of bottom intensities usually drop down 
 			#tissueRegion = morphology.binary_closing(raw_img[numZ, :, :] > background_threshold, morphology.disk(20));
-			watershedImg[tissueRegion[numZ, :, :] == 0] = 0
+			watershedImg[morphology.remove_small_holes(tissueRegion[numZ, :, :] > 0, area_threshold = 2500) == 0] = 0
 
 			# if numZ == 15:
 			# 	with napari.gui_qt():
